@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react'; // Import useRef and useEffect
 import { TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,13 @@ const ChatTab = () => {
     const [input, setInput] = useState('');
     // State to track if the AI is currently generating a response
     const [isLoading, setIsLoading] = useState(false);
+    // Ref for the end of the messages list to enable auto-scrolling
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Effect to scroll to the bottom whenever messages change
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]); // Dependency array includes messages
 
     // Update input state as user types
     const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,8 +49,6 @@ const ChatTab = () => {
 
         try {
             // --- Call the AI ---
-            // Note: This basic implementation sends only the latest user message.
-            // Pass the updated message history to the AI
             console.log(`Streaming text with history...`);
 
             const result = await streamText({
@@ -80,10 +85,8 @@ const ChatTab = () => {
                 }
             }
 
-            // Log final response details if needed (sources might not be available with streamText easily)
+            // Log final response details if needed
             console.log("Final Assistant Response:", assistantResponse);
-            // console.log("Sources:", result.sources); // Check SDK documentation for how sources are handled with streamText
-            // console.log("Provider Metadata:", result.providerMetadata); // Check SDK documentation
 
         } catch (error) {
             // Handle potential errors during AI generation or streaming
@@ -100,11 +103,11 @@ const ChatTab = () => {
     };
 
     return (
-        // Use 'h-full' on TabsContent if parent allows, or adjust relative height
-        <TabsContent value="chat" className="h-full flex flex-col">
-            {/* Main container for chat interface - Use flex-grow */}
-            <div className="flex flex-col flex-grow border rounded overflow-hidden"> {/* Added overflow-hidden */}
-                {/* Message display area - Should grow and scroll */}
+        // Use mt-4 for spacing like other tabs
+        <TabsContent value="chat" className="mt-4">
+            {/* Main container: Set fixed height, flex column, border */}
+            <div className="flex flex-col border rounded overflow-hidden" style={{ height: '500px' }}>
+                {/* Message display area: grow and scroll */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {messages.length === 0 ? (
                         // Initial message if chat history is empty
@@ -141,9 +144,11 @@ const ChatTab = () => {
                             AI is thinking...
                         </div>
                     )}
+                    {/* Empty div at the end of messages to scroll to */}
+                    <div ref={messagesEndRef} />
                 </div>
-                {/* Input form area */}
-                <form onSubmit={handleSubmit} className="p-4 border-t flex items-center gap-2 bg-background">
+                {/* Input form area: Prevent shrinking */}
+                <form onSubmit={handleSubmit} className="flex-shrink-0 p-4 border-t flex items-center gap-2 bg-background">
                     <Input
                         type="text"
                         placeholder="Send a message..."
