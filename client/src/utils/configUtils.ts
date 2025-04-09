@@ -1,12 +1,14 @@
 import { InspectorConfig } from "@/lib/configurationTypes";
-import { DEFAULT_MCP_PROXY_LISTEN_PORT } from "@/lib/constants";
+// Removed unused import: import { DEFAULT_MCP_PROXY_LISTEN_PORT } from "@/lib/constants";
 
 export const getMCPProxyAddress = (config: InspectorConfig): string => {
   const proxyFullAddress = config.MCP_PROXY_FULL_ADDRESS.value as string;
   if (proxyFullAddress) {
     return proxyFullAddress;
   }
-  return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_MCP_PROXY_LISTEN_PORT}`;
+  // Use the current window's port instead of the default internal port
+  const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+  return `${window.location.protocol}//${window.location.hostname}:${port}`;
 };
 
 export const getMCPServerRequestTimeout = (config: InspectorConfig): number => {
