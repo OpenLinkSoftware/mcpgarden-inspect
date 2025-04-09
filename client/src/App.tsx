@@ -238,6 +238,13 @@ const App = () => {
     }
   }, [connectMcpServer, toast]);
 
+  // Define the handler function to set the sample URL
+  const handleSetSampleUrl = (url: string) => {
+    setSseUrl(url);
+    // Consider also setting transport type if needed, e.g.:
+    // setTransportType("sse");
+  };
+
   useEffect(() => {
     fetch(`${getMCPProxyAddress(config)}/config`)
       .then((response) => response.json())
@@ -504,6 +511,7 @@ const App = () => {
           setArgs={setArgs}
           sseUrl={sseUrl}
           setSseUrl={setSseUrl}
+          onSetSampleUrl={handleSetSampleUrl} // Pass the new handler function
           env={env}
           setEnv={setEnv}
           config={config}

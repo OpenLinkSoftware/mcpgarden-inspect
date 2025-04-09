@@ -47,6 +47,7 @@ interface SidebarProps {
   setArgs: (args: string) => void;
   sseUrl: string;
   setSseUrl: (url: string) => void;
+  onSetSampleUrl: (url: string) => void; // Add new prop for the handler
   env: Record<string, string>;
   setEnv: (env: Record<string, string>) => void;
   bearerToken: string;
@@ -71,6 +72,7 @@ const Sidebar = ({
   setArgs,
   sseUrl,
   setSseUrl,
+  onSetSampleUrl, // Destructure the new prop
   env,
   setEnv,
   bearerToken,
@@ -152,6 +154,20 @@ const Sidebar = ({
                   onChange={(e) => setSseUrl(e.target.value)}
                   className="font-mono"
                 />
+                {/* Add the new button here */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-1 text-xs"
+                  onClick={() => {
+                    const sampleUrl = transportType === 'streamableHttp'
+                      ? "https://test.mcp.garden/mcp" // Updated URL for Streamable HTTP
+                      : "https://gitmcp.io/modelcontextprotocol/servers/tree/main/src/time"; // URL for SSE
+                    onSetSampleUrl(sampleUrl);
+                  }}
+                >
+                  Use Sample URL ({transportType === 'streamableHttp' ? 'test.mcp.garden' : 'gitmcp.io time'})
+                </Button>
               </div>
               <div className="space-y-2">
                 <Button
