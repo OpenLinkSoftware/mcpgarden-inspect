@@ -15,8 +15,14 @@ import {
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
+import path from "path"; // Import path module
+import { fileURLToPath } from "url"; // Import url module for ES module __dirname equivalent
 import { findActualExecutable } from "spawn-rx";
 import mcpProxy from "./mcpProxy.js";
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const SSE_HEADERS_PASSTHROUGH = ["authorization"];
 
@@ -35,6 +41,14 @@ const { values } = parseArgs({
 
 const app = express();
 app.use(cors());
+
+// --- Static file serving ---
+// Determine the path to the client build directory
+// Assumes the server runs from server/build/index.js and client build is in client/dist
+const clientBuildPath = path.join(__dirname, "..", "..", "client", "dist");
+console.log(`Serving static files from: ${clientBuildPath}`);
+app.use(express.static(clientBuildPath));
+// --- End static file serving ---
 
 let webAppTransports: SSEServerTransport[] = [];
 
@@ -191,6 +205,15 @@ app.get("/config", (req, res) => {
     res.status(500).json(error);
   }
 });
+
+// --- Catch-all route for SPA ---
+// This should come after all API routes
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientBuildPath, 'index.html');
+  console.log(`Serving index.html for ${req.path} from ${indexPath}`);
+  res.sendFile(indexPath);
+});
+// --- End catch-all route ---
 
 const PORT = process.env.PORT || 6277;
 
