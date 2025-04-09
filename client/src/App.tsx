@@ -740,7 +740,11 @@ const App = () => {
                         onRootsChange={handleRootsChange}
                       />
                       {/* Add Chat Tab Content */}
-                      <ChatTab />
+                      <ChatTab
+                        mcpClient={mcpClient}
+                        makeRequest={makeRequest}
+                        connectionStatus={connectionStatus}
+                      />
                     </>
                   )}
                 </div>
