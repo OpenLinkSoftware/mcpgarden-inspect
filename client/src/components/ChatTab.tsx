@@ -4,14 +4,33 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Key, AlertCircle } from 'lucide-react';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ListToolsResultSchema, CompatibilityCallToolResultSchema, ClientRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { ConnectionStatus } from "@/lib/constants";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
-// Create provider instance once outside the handler
-const googleAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY);
+// Storage keys
+const API_KEY_STORAGE_KEY = "gemini-api-key";
+const MODEL_STORAGE_KEY = "gemini-model-choice";
+
+// Available Gemini models
+const GEMINI_MODELS = [
+    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", description: "Fastest model, good for most interactions" },
+    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", description: "Complex reasoning tasks requiring more intelligence" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", description: "Next generation features, speed, thinking, multimodal" },
+    { id: "gemini-2.5-pro-preview-03-25", name: "Gemini 2.5 Pro Preview", description: "Enhanced thinking, reasoning, and multimodal" },
+];
+
+// Create provider instance - will be initialized in useEffect
+let googleAI: GoogleGenerativeAI | null = null;
 
 // Define message types
 type MessageRole = 'user' | 'assistant';
@@ -91,6 +110,49 @@ interface GeminiProperty {
     description: string;
 }
 
+// Custom keyframe animation for the button border
+const keyframeStyle = `
+@keyframes borderMove {
+  0% { 
+    background-position: 0% 50%;
+  }
+  50% { 
+    background-position: 100% 50%;
+  }
+  100% { 
+    background-position: 0% 50%;
+  }
+}
+
+.animated-border {
+  position: relative;
+  z-index: 0;
+  transition: all 0.3s ease;
+}
+
+.animated-border:before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  padding: 1px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+  background-size: 200% 200%;
+  animation: borderMove 3s ease-in-out infinite;
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.animated-border:hover:before {
+  background-size: 150% 150%;
+  animation-duration: 2s;
+}
+`;
+
 const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => {
     // State for messages in the chat
     const [messages, setMessages] = useState<Message[]>([]);
@@ -106,6 +168,70 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
     const [toolsLoaded, setToolsLoaded] = useState(false);
     // State for debugging info
     const [debugInfo, setDebugInfo] = useState<string>("");
+    // State for managing the API key
+    const [apiKey, setApiKey] = useState<string>("");
+    const [showApiKey, setShowApiKey] = useState(false);
+    const [apiKeyInputVisible, setApiKeyInputVisible] = useState(false);
+    const [apiKeyInputValue, setApiKeyInputValue] = useState("");
+    // State for managing model selection
+    const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
+
+    // Initialize googleAI, load saved API key and model preference on component mount
+    useEffect(() => {
+        // Load API key from localStorage if available
+        const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (savedApiKey) {
+            setApiKey(savedApiKey);
+            googleAI = new GoogleGenerativeAI(savedApiKey);
+        } else if (import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY) {
+            // Fall back to env variable if available
+            googleAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY);
+        }
+
+        // Load model preference
+        const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+        if (savedModel && GEMINI_MODELS.some(model => model.id === savedModel)) {
+            setSelectedModel(savedModel);
+        }
+    }, []);
+
+    // Function to mask API key for display
+    const getMaskedApiKey = (key: string) => {
+        if (!key || key.length < 8) return "";
+        return `${key.substring(0, 4)}${"*".repeat(key.length - 8)}${key.substring(key.length - 4)}`;
+    };
+
+    // Handle saving new API key
+    const handleSaveApiKey = () => {
+        if (apiKeyInputValue.trim()) {
+            const newKey = apiKeyInputValue.trim();
+            localStorage.setItem(API_KEY_STORAGE_KEY, newKey);
+            setApiKey(newKey);
+            googleAI = new GoogleGenerativeAI(newKey);
+            setApiKeyInputVisible(false);
+            setApiKeyInputValue("");
+            setShowApiKey(false);
+        }
+    };
+
+    // Handle removing API key
+    const handleRemoveApiKey = () => {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+        setApiKey("");
+        // Fall back to env variable if available
+        if (import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY) {
+            googleAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY);
+        } else {
+            googleAI = null;
+        }
+        setShowApiKey(false);
+    };
+
+    // Handle model change
+    const handleModelChange = (model: string) => {
+        setSelectedModel(model);
+        localStorage.setItem(MODEL_STORAGE_KEY, model);
+    };
 
     // Effect to load tools when mcpClient is connected
     useEffect(() => {
@@ -219,8 +345,12 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
             }));
 
             // Select model
+            if (!googleAI) {
+                throw new Error("Google AI client not initialized");
+            }
+
             const model = googleAI.getGenerativeModel({
-                model: 'gemini-1.5-flash',
+                model: selectedModel,
                 systemInstruction: tools.length > 0 ?
                     "You can use tools to help answer the user's question. Use tools whenever they would be helpful." :
                     undefined
@@ -295,7 +425,7 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
             if (response.candidates && response.candidates.length > 0) {
                 const candidate = response.candidates[0];
                 if (candidate.content && candidate.content.parts) {
-                    candidate.content.parts.forEach(part => {
+                    candidate.content.parts.forEach((part: { functionCall?: { name: string, args: unknown } }) => {
                         if (part.functionCall) {
                             functionCalls.push({
                                 name: part.functionCall.name,
@@ -505,106 +635,205 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
     })();
 
     return (
-        // Use mt-4 for spacing like other tabs
-        <TabsContent value="chat" className="mt-4">
-            {/* Connection status */}
-            <div className="mb-2 flex items-center">
-                <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus === "connected" ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-xs text-muted-foreground">
-                    MCP: {connectionStatusText} {connectionStatus === "connected" && tools.length > 0 ?
-                        ` - ${tools.length} tools available` :
-                        connectionStatus === "connected" ? " - No tools found" : ""}
-                </span>
-            </div>
-
-            {/* API Key Status */}
-            <div className="mb-2 flex items-center">
-                <div className={`w-2 h-2 rounded-full mr-2 ${import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-xs text-muted-foreground">
-                    Gemini API Key: {import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'Configured' : 'Missing'}
-                </span>
-            </div>
-
-            {/* Debug Info (only visible when there is debug content) */}
-            {debugInfo && (
-                <div className="mb-2 p-2 bg-black/5 rounded text-xs overflow-x-auto">
-                    <details>
-                        <summary className="cursor-pointer font-medium">Debug Info</summary>
-                        <pre className="mt-1 whitespace-pre-wrap">{debugInfo}</pre>
-                    </details>
-                </div>
+        <>
+            {/* Add the custom styles */}
+            {(!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY) && (
+                <style dangerouslySetInnerHTML={{ __html: keyframeStyle }} />
             )}
 
-            {/* Main container: Set fixed height, flex column, border */}
-            <div className="flex flex-col border rounded overflow-hidden" style={{ height: '500px' }}>
-                {/* Message display area: grow and scroll */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {messages.length === 0 ? (
-                        // Initial message if chat history is empty
-                        <Alert className="bg-background">
-                            <AlertTitle>Chat Ready</AlertTitle>
-                            <AlertDescription>
-                                Send a message using the input below to start chatting with the AI.
-                                {connectionStatus === "connected" ?
-                                    tools.length > 0 ?
-                                        ` MCP tools available: ${tools.map(t => t.name).join(', ')}` :
-                                        " MCP connected but no tools available." :
-                                    " MCP not connected - using Gemini only."}
-                            </AlertDescription>
-                        </Alert>
-                    ) : (
-                        // Render message history
-                        messages.map((msg, index) => (
-                            <div
-                                key={index}
-                                className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div
-                                    className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user'
-                                        ? 'bg-primary text-primary-foreground' // User message style
-                                        : 'bg-muted text-muted-foreground' // AI message style
-                                        }`}
+            {/* TabsContent and the rest */}
+            <TabsContent value="chat" className="mt-4">
+                {/* Connection status */}
+                <div className="mb-2 flex items-center">
+                    <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus === "connected" ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="text-xs text-muted-foreground">
+                        MCP: {connectionStatusText} {connectionStatus === "connected" && tools.length > 0 ?
+                            ` - ${tools.length} tools available` :
+                            connectionStatus === "connected" ? " - No tools found" : ""}
+                    </span>
+                </div>
+
+                {/* API Key Management */}
+                <div className="mb-2">
+                    <div className="flex items-center">
+                        <div className={`w-2 h-2 rounded-full mr-2 ${apiKey || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-xs text-muted-foreground flex-grow">
+                            Gemini API Key: {apiKey ?
+                                (showApiKey ? apiKey : getMaskedApiKey(apiKey)) + " (custom)" :
+                                import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'Using environment key' : 'Missing'}
+                        </span>
+                        {apiKey && (
+                            <>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => setShowApiKey(!showApiKey)}
                                 >
-                                    {/* Use <pre> for better formatting of potential code/markdown */}
-                                    {/* Ensure content is a string before rendering, provide fallback */}
-                                    <pre className="text-sm whitespace-pre-wrap font-sans text-left"
-                                        dangerouslySetInnerHTML={{
-                                            __html: typeof msg.content === 'string'
-                                                ? msg.content
-                                                : JSON.stringify(msg.content, null, 2)
-                                        }}
-                                    />
-                                </div>
+                                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 text-destructive"
+                                    onClick={handleRemoveApiKey}
+                                >
+                                    ✕
+                                </Button>
+                            </>
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setApiKeyInputVisible(!apiKeyInputVisible)}
+                            className={!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ?
+                                'animated-border' :
+                                ''}
+                        >
+                            {!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY && (
+                                <AlertCircle size={14} className="mr-1 animate-pulse text-primary" />
+                            )}
+                            {apiKey ? "Change" : "Set API Key"}
+                        </Button>
+                    </div>
+
+                    {apiKeyInputVisible && (
+                        <div className="mt-1 bg-card rounded p-2">
+                            <p className="text-xs mb-1 text-muted-foreground">
+                                Your API key is stored only in your browser's local storage and never sent to our servers.
+                            </p>
+                            <div className="flex items-center gap-1">
+                                <Key size={14} className="text-muted-foreground" />
+                                <Input
+                                    type={showApiKey ? "text" : "password"}
+                                    placeholder="Enter Gemini API key"
+                                    value={apiKeyInputValue}
+                                    onChange={(e) => setApiKeyInputValue(e.target.value)}
+                                    className="flex-1 h-8 text-xs"
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={handleSaveApiKey}
+                                    disabled={!apiKeyInputValue.trim()}
+                                    className="h-8"
+                                >
+                                    Save
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setApiKeyInputVisible(false)}
+                                    className="h-8"
+                                >
+                                    Cancel
+                                </Button>
                             </div>
-                        ))
-                    )}
-                    {/* Loading indicator */}
-                    {isLoading && (
-                        <div className="flex justify-center items-center p-3 text-muted-foreground">
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            AI is thinking...
                         </div>
                     )}
-                    {/* Empty div at the end of messages to scroll to */}
-                    <div ref={messagesEndRef} />
                 </div>
-                {/* Input form area: Prevent shrinking */}
-                <form onSubmit={handleSubmit} className="flex-shrink-0 p-4 border-t flex items-center gap-2 bg-background">
-                    <Input
-                        type="text"
-                        placeholder="Send a message..."
-                        value={input}
-                        onChange={handleInputChange}
-                        className="flex-1"
-                        disabled={isLoading} // Disable input while loading
-                        aria-label="Chat input"
-                    />
-                    <Button type="submit" disabled={isLoading || !input.trim()}>
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
-                    </Button>
-                </form>
-            </div>
-        </TabsContent>
+
+                {/* Model Selection */}
+                <div className="mb-2 flex items-center">
+                    <div className={`w-2 h-2 rounded-full mr-2 bg-green-500`}></div>
+                    <span className="text-xs text-muted-foreground mr-2">Model:</span>
+                    <Select value={selectedModel} onValueChange={handleModelChange}>
+                        <SelectTrigger className="h-7 text-xs flex-grow max-w-xs">
+                            <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {GEMINI_MODELS.map(model => (
+                                <SelectItem key={model.id} value={model.id} className="text-xs">
+                                    <div>
+                                        <div>{model.name}</div>
+                                        <div className="text-xs text-muted-foreground">{model.description}</div>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Debug Info (only visible when there is debug content) */}
+                {debugInfo && (
+                    <div className="mb-2 p-2 bg-black/5 rounded text-xs overflow-x-auto">
+                        <details>
+                            <summary className="cursor-pointer font-medium">Debug Info</summary>
+                            <pre className="mt-1 whitespace-pre-wrap">{debugInfo}</pre>
+                        </details>
+                    </div>
+                )}
+
+                {/* Main container: Set fixed height, flex column, border */}
+                <div className="flex flex-col border rounded overflow-hidden" style={{ height: '500px' }}>
+                    {/* Message display area: grow and scroll */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {messages.length === 0 ? (
+                            // Initial message if chat history is empty
+                            <Alert className="bg-background">
+                                <AlertTitle>Chat Ready</AlertTitle>
+                                <AlertDescription>
+                                    Send a message using the input below to start chatting with the AI.
+                                    {connectionStatus === "connected" ?
+                                        tools.length > 0 ?
+                                            ` MCP tools available: ${tools.map(t => t.name).join(', ')}` :
+                                            " MCP connected but no tools available." :
+                                        " MCP not connected - using Gemini only."}
+                                </AlertDescription>
+                            </Alert>
+                        ) : (
+                            // Render message history
+                            messages.map((msg, index) => (
+                                <div
+                                    key={index}
+                                    className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div
+                                        className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user'
+                                            ? 'bg-primary text-primary-foreground' // User message style
+                                            : 'bg-muted text-muted-foreground' // AI message style
+                                            }`}
+                                    >
+                                        {/* Use <pre> for better formatting of potential code/markdown */}
+                                        {/* Ensure content is a string before rendering, provide fallback */}
+                                        <pre className="text-sm whitespace-pre-wrap font-sans text-left"
+                                            dangerouslySetInnerHTML={{
+                                                __html: typeof msg.content === 'string'
+                                                    ? msg.content
+                                                    : JSON.stringify(msg.content, null, 2)
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                        {/* Loading indicator */}
+                        {isLoading && (
+                            <div className="flex justify-center items-center p-3 text-muted-foreground">
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                AI is thinking...
+                            </div>
+                        )}
+                        {/* Empty div at the end of messages to scroll to */}
+                        <div ref={messagesEndRef} />
+                    </div>
+                    {/* Input form area: Prevent shrinking */}
+                    <form onSubmit={handleSubmit} className="flex-shrink-0 p-4 border-t flex items-center gap-2 bg-background">
+                        <Input
+                            type="text"
+                            placeholder="Send a message..."
+                            value={input}
+                            onChange={handleInputChange}
+                            className="flex-1"
+                            disabled={isLoading} // Disable input while loading
+                            aria-label="Chat input"
+                        />
+                        <Button type="submit" disabled={isLoading || !input.trim()}>
+                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+                        </Button>
+                    </form>
+                </div>
+            </TabsContent>
+        </>
     );
 };
 
