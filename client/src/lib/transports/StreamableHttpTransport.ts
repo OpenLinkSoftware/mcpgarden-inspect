@@ -19,7 +19,8 @@ export class StreamableHttpClientTransport implements Transport {
     private _url: URL;
     private _sessionId?: string;
     private _headers: HeadersInit;
-    private _abortController?: AbortController;
+    private _sendAbortController?: AbortController; // Renamed for clarity
+    private _listenerAbortController?: AbortController; // Added for the GET listener
     private _sseConnections: Map<string, ReadableStreamDefaultReader<Uint8Array>> = new Map();
     private _lastEventId?: string;
     private _closed: boolean = false;
@@ -78,8 +79,9 @@ export class StreamableHttpClientTransport implements Transport {
             }
         }
 
-        this._abortController?.abort();
-        this._abortController = new AbortController();
+        // Abort previous send request if any
+        this._sendAbortController?.abort();
+        this._sendAbortController = new AbortController();
 
         const headers = new Headers(this._headers);
         headers.set("Content-Type", "application/json");
@@ -94,7 +96,7 @@ export class StreamableHttpClientTransport implements Transport {
                 method: "POST",
                 headers,
                 body: JSON.stringify(message),
-                signal: this._abortController.signal,
+                signal: this._sendAbortController.signal, // Use the send controller
             });
 
             const sessionId = response.headers.get("Mcp-Session-Id");
@@ -277,6 +279,10 @@ export class StreamableHttpClientTransport implements Transport {
             throw new Error("Cannot establish server-side listener without a session ID");
         }
 
+        // Abort any previous listener before starting a new one
+        this._listenerAbortController?.abort();
+        this._listenerAbortController = new AbortController();
+
         const headers = new Headers(this._headers);
         headers.set("Accept", "text/event-stream");
         headers.set("Mcp-Session-Id", this._sessionId);
@@ -289,6 +295,7 @@ export class StreamableHttpClientTransport implements Transport {
             const response = await fetch(this._url.toString(), {
                 method: "GET",
                 headers,
+                signal: this._listenerAbortController.signal, // Use the listener controller's signal
             });
 
             if (!response.ok) {
@@ -342,7 +349,8 @@ export class StreamableHttpClientTransport implements Transport {
         }
         this._sseConnections.clear();
 
-        this._abortController?.abort();
+        this._sendAbortController?.abort(); // Abort the send controller
+        this._listenerAbortController?.abort(); // Abort the listener controller
 
         if (this._sessionId) {
             try {
