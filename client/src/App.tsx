@@ -29,8 +29,7 @@ import {
   FolderTree,
   Hammer,
   Hash,
-  MessageSquare,
-  BarChart,
+  MessageSquare
 } from "lucide-react";
 
 import { z } from "zod";
@@ -44,7 +43,6 @@ import RootsTab from "./components/RootsTab";
 import SamplingTab, { PendingRequest } from "./components/SamplingTab";
 import Sidebar from "./components/Sidebar";
 import ToolsTab from "./components/ToolsTab";
-import StatsTab from "./components/StatsTab";
 import { DEFAULT_INSPECTOR_CONFIG } from "./lib/constants";
 import { InspectorConfig } from "./lib/configurationTypes";
 import { getMCPProxyAddress } from "./utils/configUtils";
@@ -578,10 +576,6 @@ const App = () => {
                     <FolderTree className="w-4 h-4 mr-2" />
                     Roots
                   </TabsTrigger>
-                  <TabsTrigger value="stats">
-                    <BarChart className="w-4 h-4 mr-2" />
-                    Stats
-                  </TabsTrigger>
                 </TabsList>
 
                 <div className="w-full">
@@ -713,7 +707,6 @@ const App = () => {
                         setRoots={setRoots}
                         onRootsChange={handleRootsChange}
                       />
-                      <StatsTab mcpClient={mcpClient} />
                     </>
                   )}
                 </div>
