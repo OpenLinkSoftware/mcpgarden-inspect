@@ -7,6 +7,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
+    proxy: {
+      '/health': 'http://localhost:6277',
+      '/sse': 'http://localhost:6277',
+      '/message': 'http://localhost:6277',
+      '/config': 'http://localhost:6277'
+    },
   },
   resolve: {
     alias: {

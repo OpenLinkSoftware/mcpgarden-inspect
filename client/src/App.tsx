@@ -249,9 +249,24 @@ const App = () => {
 
   useEffect(() => {
     fetch(`${getMCPProxyAddress(config)}/config`)
-      .then((response) => response.json())
+      .then(response => {
+        // Check if response is actually JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.log('Config endpoint returned non-JSON response (likely index.html). Using default config.');
+          // This is intentional - server returns index.html for config endpoint
+          // Use default values instead of treating as an error
+          return {
+            defaultEnvironment: {},
+            defaultCommand: command || 'mcp-server-everything',
+            defaultArgs: args || '',
+          };
+        }
+        return response.json();
+      })
       .then((data) => {
-        setEnv(data.defaultEnvironment);
+        console.log("Config data:", data);
+        setEnv(data.defaultEnvironment || {});
         if (data.defaultCommand) {
           setCommand(data.defaultCommand);
         }
@@ -259,9 +274,11 @@ const App = () => {
           setArgs(data.defaultArgs);
         }
       })
-      .catch((error) =>
-        console.error("Error fetching default environment:", error),
-      );
+      .catch((error) => {
+        console.error("Error fetching default environment:", error);
+        // Continue with default values instead of failing
+        console.log("Using default environment configuration");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
