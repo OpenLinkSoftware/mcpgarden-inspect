@@ -3,6 +3,8 @@ import {
   SSEClientTransport,
   SseError,
 } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHttpClientTransport as StreamableHttpTransport } from "../transports/StreamableHttpTransport"; // Corrected path
+
 import {
   ClientNotification,
   ClientRequest,
@@ -42,10 +44,10 @@ import { getMCPServerRequestTimeout } from "@/utils/configUtils";
 import { InspectorConfig } from "../configurationTypes";
 
 interface UseConnectionOptions {
-  transportType: "stdio" | "sse";
+  transportType: "stdio" | "sse" | "streamableHttp"; // Added streamableHttp
   command: string;
   args: string;
-  sseUrl: string;
+  sseUrl: string; // Used as base URL for streamableHttp or target for SSE proxy
   env: Record<string, string>;
   bearerToken?: string;
   config: InspectorConfig;
@@ -243,6 +245,7 @@ export function useConnection({
   };
 
   const handleAuthError = async (error: unknown) => {
+    // This function might need adjustment if StreamableHttpTransport handles auth differently
     if (error instanceof SseError && error.code === 401) {
       sessionStorage.setItem(SESSION_KEYS.SERVER_URL, sseUrl);
 
@@ -269,34 +272,49 @@ export function useConnection({
       },
     );
 
-    try {
-      await checkProxyHealth();
-    } catch {
-      setConnectionStatus("error-connecting-to-proxy");
-      return;
+    // Check proxy health only if not using direct streamableHttp
+    if (transportType !== "streamableHttp") {
+      try {
+        await checkProxyHealth();
+      } catch {
+        setConnectionStatus("error-connecting-to-proxy");
+        return;
+      }
     }
-    const mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/sse`);
-    mcpProxyServerUrl.searchParams.append("transportType", transportType);
-    if (transportType === "stdio") {
-      mcpProxyServerUrl.searchParams.append("command", command);
-      mcpProxyServerUrl.searchParams.append("args", args);
-      mcpProxyServerUrl.searchParams.append("env", JSON.stringify(env));
+
+    let clientTransport; // Declare transport variable
+    const headers: HeadersInit = {};
+    // Use manually provided bearer token if available, otherwise use OAuth tokens
+    const token = bearerToken || (await authProvider.tokens())?.access_token;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    // Instantiate the correct transport based on type
+    if (transportType === "streamableHttp") {
+      // Connect directly using StreamableHttpTransport
+      // Assuming sseUrl is the base URL for the streamable HTTP server
+      try {
+        // Note: Constructor might need options like headers depending on implementation
+        clientTransport = new StreamableHttpTransport(new URL(sseUrl), { headers });
+      } catch (err) {
+        console.error("Failed to instantiate StreamableHttpTransport:", err);
+        setConnectionStatus("error");
+        return;
+      }
     } else {
-      mcpProxyServerUrl.searchParams.append("url", sseUrl);
-    }
-
-    try {
-      // Inject auth manually instead of using SSEClientTransport, because we're
-      // proxying through the inspector server first.
-      const headers: HeadersInit = {};
-
-      // Use manually provided bearer token if available, otherwise use OAuth tokens
-      const token = bearerToken || (await authProvider.tokens())?.access_token;
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      // Connect via the proxy for stdio or standard sse
+      const mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/sse`);
+      mcpProxyServerUrl.searchParams.append("transportType", transportType);
+      if (transportType === "stdio") {
+        mcpProxyServerUrl.searchParams.append("command", command);
+        mcpProxyServerUrl.searchParams.append("args", args);
+        mcpProxyServerUrl.searchParams.append("env", JSON.stringify(env));
+      } else { // sse
+        mcpProxyServerUrl.searchParams.append("url", sseUrl);
       }
 
-      const clientTransport = new SSEClientTransport(mcpProxyServerUrl, {
+      clientTransport = new SSEClientTransport(mcpProxyServerUrl, {
         eventSourceInit: {
           fetch: (url, init) => fetch(url, { ...init, headers }),
         },
@@ -304,41 +322,46 @@ export function useConnection({
           headers,
         },
       });
+    }
 
-      if (onNotification) {
-        [
-          CancelledNotificationSchema,
-          LoggingMessageNotificationSchema,
-          ResourceUpdatedNotificationSchema,
-          ResourceListChangedNotificationSchema,
-          ToolListChangedNotificationSchema,
-          PromptListChangedNotificationSchema,
-        ].forEach((notificationSchema) => {
-          client.setNotificationHandler(notificationSchema, onNotification);
-        });
+    // Setup notification handlers
+    if (onNotification) {
+      [
+        CancelledNotificationSchema,
+        LoggingMessageNotificationSchema,
+        ResourceUpdatedNotificationSchema,
+        ResourceListChangedNotificationSchema,
+        ToolListChangedNotificationSchema,
+        PromptListChangedNotificationSchema,
+      ].forEach((notificationSchema) => {
+        client.setNotificationHandler(notificationSchema, onNotification);
+      });
 
-        client.fallbackNotificationHandler = (
-          notification: Notification,
-        ): Promise<void> => {
-          onNotification(notification);
-          return Promise.resolve();
-        };
-      }
+      client.fallbackNotificationHandler = (
+        notification: Notification,
+      ): Promise<void> => {
+        onNotification(notification);
+        return Promise.resolve();
+      };
+    }
 
-      if (onStdErrNotification) {
-        client.setNotificationHandler(
-          StdErrNotificationSchema,
-          onStdErrNotification,
-        );
-      }
+    if (onStdErrNotification) {
+      client.setNotificationHandler(
+        StdErrNotificationSchema,
+        onStdErrNotification,
+      );
+    }
 
-      try {
-        await client.connect(clientTransport);
-      } catch (error) {
-        console.error(
-          `Failed to connect to MCP Server via the MCP Inspector Proxy: ${mcpProxyServerUrl}:`,
-          error,
-        );
+    // Attempt to connect
+    try {
+      await client.connect(clientTransport);
+    } catch (error) {
+      console.error(
+        `Failed to connect to MCP Server:`,
+        error,
+      );
+      // Handle auth errors specifically for SSE via proxy
+      if (transportType !== 'streamableHttp') {
         const shouldRetry = await handleAuthError(error);
         if (shouldRetry) {
           return connect(undefined, retryCount + 1);
@@ -348,9 +371,14 @@ export function useConnection({
           // Don't set error state if we're about to redirect for auth
           return;
         }
-        throw error;
       }
+      // For streamableHttp or unhandled SSE errors, set error state
+      setConnectionStatus("error");
+      return; // Stop execution after setting error state
+    }
 
+    // Post-connection setup
+    try {
       const capabilities = client.getServerCapabilities();
       setServerCapabilities(capabilities ?? null);
       setCompletionsSupported(true); // Reset completions support on new connection
@@ -372,8 +400,10 @@ export function useConnection({
       setMcpClient(client);
       setConnectionStatus("connected");
     } catch (e) {
-      console.error(e);
+      console.error("Error during post-connection setup:", e);
       setConnectionStatus("error");
+      await client.close(); // Attempt to clean up client
+      setMcpClient(null);
     }
   };
 
