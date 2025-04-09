@@ -39,8 +39,8 @@ import {
 
 interface SidebarProps {
   connectionStatus: ConnectionStatus;
-  transportType: "stdio" | "sse";
-  setTransportType: (type: "stdio" | "sse") => void;
+  transportType: "stdio" | "sse" | "streamableHttp";
+  setTransportType: (type: "stdio" | "sse" | "streamableHttp") => void;
   command: string;
   setCommand: (command: string) => void;
   args: string;
@@ -106,7 +106,7 @@ const Sidebar = ({
             <label className="text-sm font-medium">Transport Type</label>
             <Select
               value={transportType}
-              onValueChange={(value: "stdio" | "sse") =>
+              onValueChange={(value: "stdio" | "sse" | "streamableHttp") =>
                 setTransportType(value)
               }
             >
@@ -116,6 +116,7 @@ const Sidebar = ({
               <SelectContent>
                 <SelectItem value="stdio">STDIO</SelectItem>
                 <SelectItem value="sse">SSE</SelectItem>
+                <SelectItem value="streamableHttp">Streamable HTTP</SelectItem>
               </SelectContent>
             </Select>
           </div>

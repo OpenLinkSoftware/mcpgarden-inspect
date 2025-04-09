@@ -30,6 +30,7 @@ import {
   Hammer,
   Hash,
   MessageSquare,
+  BarChart,
 } from "lucide-react";
 
 import { z } from "zod";
@@ -43,6 +44,7 @@ import RootsTab from "./components/RootsTab";
 import SamplingTab, { PendingRequest } from "./components/SamplingTab";
 import Sidebar from "./components/Sidebar";
 import ToolsTab from "./components/ToolsTab";
+import StatsTab from "./components/StatsTab";
 import { DEFAULT_INSPECTOR_CONFIG } from "./lib/constants";
 import { InspectorConfig } from "./lib/configurationTypes";
 import { getMCPProxyAddress } from "./utils/configUtils";
@@ -77,11 +79,11 @@ const App = () => {
   });
 
   const [sseUrl, setSseUrl] = useState<string>(() => {
-    return localStorage.getItem("lastSseUrl") || "http://localhost:3001/sse";
+    return localStorage.getItem("lastSseUrl") || "http://localhost:3001/sse"; // Default might need update for streamableHttp
   });
-  const [transportType, setTransportType] = useState<"stdio" | "sse">(() => {
+  const [transportType, setTransportType] = useState<"stdio" | "sse" | "streamableHttp">(() => {
     return (
-      (localStorage.getItem("lastTransportType") as "stdio" | "sse") || "stdio"
+      (localStorage.getItem("lastTransportType") as "stdio" | "sse" | "streamableHttp") || "stdio"
     );
   });
   const [logLevel, setLogLevel] = useState<LoggingLevel>("debug");
@@ -497,7 +499,7 @@ const App = () => {
         <Sidebar
           connectionStatus={connectionStatus}
           transportType={transportType}
-          setTransportType={setTransportType}
+          setTransportType={setTransportType as (type: "stdio" | "sse" | "streamableHttp") => void} // Cast to satisfy Sidebar prop type
           command={command}
           setCommand={setCommand}
           args={args}
@@ -575,6 +577,10 @@ const App = () => {
                   <TabsTrigger value="roots">
                     <FolderTree className="w-4 h-4 mr-2" />
                     Roots
+                  </TabsTrigger>
+                  <TabsTrigger value="stats">
+                    <BarChart className="w-4 h-4 mr-2" />
+                    Stats
                   </TabsTrigger>
                 </TabsList>
 
@@ -707,6 +713,7 @@ const App = () => {
                         setRoots={setRoots}
                         onRootsChange={handleRootsChange}
                       />
+                      <StatsTab mcpClient={mcpClient} />
                     </>
                   )}
                 </div>

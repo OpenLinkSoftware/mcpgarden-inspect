@@ -38,10 +38,13 @@
   "dependencies": {
     "@modelcontextprotocol/inspector-client": "^0.8.2",
     "@modelcontextprotocol/inspector-server": "^0.8.2",
+    "@radix-ui/react-accordion": "^1.2.4",
+    "@types/uuid": "^10.0.0",
     "concurrently": "^9.0.1",
     "shell-quote": "^1.8.2",
     "spawn-rx": "^5.1.2",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
