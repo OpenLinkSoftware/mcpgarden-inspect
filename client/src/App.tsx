@@ -564,7 +564,7 @@ const App = () => {
                 className="w-full p-4"
                 onValueChange={(value) => (window.location.hash = value)}
               >
-                <TabsList className="mb-4 p-0">
+                <TabsList className="mb-4 p-2">
                   <TabsTrigger
                     value="resources"
                     disabled={!serverCapabilities?.resources}

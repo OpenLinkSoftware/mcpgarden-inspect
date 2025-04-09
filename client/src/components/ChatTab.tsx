@@ -1,3 +1,14 @@
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogTrigger
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scrollarea";
+import { Info } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -176,6 +187,10 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
     // State for managing model selection
     const [selectedModel, setSelectedModel] = useState<string>("gemini-2.0-flash");
 
+    // State for selected tools (tool name -> boolean)
+    const [selectedTools, setSelectedTools] = useState<Record<string, boolean>>({});
+    // State for the tool being previewed in the dialog
+    const [previewTool, setPreviewTool] = useState<GeminiTool | null>(null);
     // Initialize googleAI, load saved API key and model preference on component mount
     useEffect(() => {
         // Load API key from localStorage if available
@@ -294,8 +309,18 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
                         });
 
                         setTools(geminiTools);
+                        // Initialize selectedTools state with all tools selected by default
+                        const initialSelected: Record<string, boolean> = {};
+                        geminiTools.forEach(tool => {
+                            initialSelected[tool.name] = true;
+                        });
+                        setSelectedTools(initialSelected);
                         console.log("MCP tools prepared for Google GenAI:", geminiTools);
                         setDebugInfo(`Loaded ${geminiTools.length} tools: ${JSON.stringify(geminiTools, null, 2)}`);
+                    } else {
+                        // Handle case where no tools are found
+                        setTools([]);
+                        setSelectedTools({});
                     }
                     setToolsLoaded(true);
                 } catch (err) {
@@ -327,6 +352,9 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
 
         setDebugInfo(""); // Clear debug info for new request
 
+        // Filter tools based on selection state
+        const activeTools = tools.filter(tool => selectedTools[tool.name]);
+
         // Add user message to the chat history immediately for responsiveness
         const newUserMessage: Message = { role: 'user', content: input };
         const updatedMessages = [...messages, newUserMessage];
@@ -336,7 +364,7 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
         setIsLoading(true); // Show loading indicator
 
         try {
-            setDebugInfo(`Sending message to Gemini with ${tools.length} tools available`);
+            setDebugInfo(`Sending message to Gemini with ${activeTools.length} active tools out of ${tools.length} available`);
 
             // Format history for Google GenAI
             const formattedMessages = updatedMessages.map(msg => ({
@@ -351,7 +379,7 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
 
             const model = googleAI.getGenerativeModel({
                 model: selectedModel,
-                systemInstruction: tools.length > 0 ?
+                systemInstruction: activeTools.length > 0 ? // Use activeTools count
                     "You can use tools to help answer the user's question. Use tools whenever they would be helpful." :
                     undefined
             });
@@ -367,15 +395,15 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
                 generationConfig: modelConfig
             };
 
-            // Add tools if available - outside of generationConfig
-            if (tools.length > 0) {
+            // Add *active* tools if available - outside of generationConfig
+            if (activeTools.length > 0) {
                 requestConfig.tools = [{
-                    functionDeclarations: tools
+                    functionDeclarations: activeTools // Send only selected tools
                 }];
             }
 
             // Stream response
-            setDebugInfo(prev => prev + "\nSending request to model...");
+            setDebugInfo(prev => prev + `\nSending request to model with tools: ${activeTools.map(t => t.name).join(', ') || 'None'}`);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const streamingResponse = await model.generateContentStream(requestConfig as any);
 
@@ -480,12 +508,12 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
 </details>`;
 
                         setMessages(prev => {
-                            const lastIndex = prev.length - 1;
-                            if (lastIndex >= 0 && prev[lastIndex].role === 'assistant') {
+                            const lastMessageIndex = prev.length - 1;
+                            if (lastMessageIndex >= 0 && prev[lastMessageIndex].role === 'assistant') {
                                 const updated = [...prev];
-                                updated[lastIndex] = {
-                                    ...updated[lastIndex],
-                                    content: updated[lastIndex].content + toolResponse
+                                updated[lastMessageIndex] = {
+                                    ...updated[lastMessageIndex],
+                                    content: updated[lastMessageIndex].content + toolResponse
                                 };
                                 return updated;
                             }
@@ -499,12 +527,12 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
                         // Append error information to the assistant's response
                         const errorMsg = `\n\nError using tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
                         setMessages(prev => {
-                            const lastIndex = prev.length - 1;
-                            if (lastIndex >= 0 && prev[lastIndex].role === 'assistant') {
+                            const lastMessageIndex = prev.length - 1;
+                            if (lastMessageIndex >= 0 && prev[lastMessageIndex].role === 'assistant') {
                                 const updated = [...prev];
-                                updated[lastIndex] = {
-                                    ...updated[lastIndex],
-                                    content: updated[lastIndex].content + errorMsg
+                                updated[lastMessageIndex] = {
+                                    ...updated[lastMessageIndex],
+                                    content: updated[lastMessageIndex].content + errorMsg
                                 };
                                 return updated;
                             }
@@ -570,13 +598,13 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
                             setMessages(prev => {
                                 // Check if we already had an assistant message
                                 if (assistantMessageAdded && prev.length > 0) {
-                                    const lastIndex = prev.length - 1;
-                                    if (prev[lastIndex].role === 'assistant') {
+                                    const lastMessageIndex = prev.length - 1;
+                                    if (prev[lastMessageIndex].role === 'assistant') {
                                         // Keep the tool responses at the end as collapsible details
-                                        const toolResponses = prev[lastIndex].content.match(/<details>[\s\S]*?<\/details>/g) || [];
+                                        const toolResponses = prev[lastMessageIndex].content.match(/<details>[\s\S]*?<\/details>/g) || [];
 
                                         const updated = [...prev];
-                                        updated[lastIndex] = {
+                                        updated[lastMessageIndex] = {
                                             role: 'assistant',
                                             content: followupText + '\n\n' + toolResponses.join('\n')
                                         };
@@ -641,197 +669,303 @@ const ChatTab = ({ mcpClient, makeRequest, connectionStatus }: ChatTabProps) => 
                 <style dangerouslySetInnerHTML={{ __html: keyframeStyle }} />
             )}
 
-            {/* TabsContent and the rest */}
-            <TabsContent value="chat" className="mt-4">
-                {/* Connection status */}
-                <div className="mb-2 flex items-center">
-                    <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus === "connected" ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <span className="text-xs text-muted-foreground">
-                        MCP: {connectionStatusText} {connectionStatus === "connected" && tools.length > 0 ?
-                            ` - ${tools.length} tools available` :
-                            connectionStatus === "connected" ? " - No tools found" : ""}
-                    </span>
-                </div>
-
-                {/* API Key Management */}
-                <div className="mb-2">
-                    <div className="flex items-center">
-                        <div className={`w-2 h-2 rounded-full mr-2 ${apiKey || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <span className="text-xs text-muted-foreground flex-grow">
-                            Gemini API Key: {apiKey ?
-                                (showApiKey ? apiKey : getMaskedApiKey(apiKey)) + " (custom)" :
-                                import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'Using environment key' : 'Missing'}
-                        </span>
-                        {apiKey && (
-                            <>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={() => setShowApiKey(!showApiKey)}
-                                >
-                                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 text-destructive"
-                                    onClick={handleRemoveApiKey}
-                                >
-                                    ✕
-                                </Button>
-                            </>
-                        )}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setApiKeyInputVisible(!apiKeyInputVisible)}
-                            className={!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ?
-                                'animated-border' :
-                                ''}
-                        >
-                            {!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY && (
-                                <AlertCircle size={14} className="mr-1 animate-pulse text-primary" />
-                            )}
-                            {apiKey ? "Change" : "Set API Key"}
-                        </Button>
-                    </div>
-
-                    {apiKeyInputVisible && (
-                        <div className="mt-1 bg-card rounded p-2">
-                            <p className="text-xs mb-1 text-muted-foreground">
-                                Your API key is stored only in your browser's local storage and never sent to our servers.
-                            </p>
-                            <div className="flex items-center gap-1">
-                                <Key size={14} className="text-muted-foreground" />
-                                <Input
-                                    type={showApiKey ? "text" : "password"}
-                                    placeholder="Enter Gemini API key"
-                                    value={apiKeyInputValue}
-                                    onChange={(e) => setApiKeyInputValue(e.target.value)}
-                                    className="flex-1 h-8 text-xs"
-                                />
-                                <Button
-                                    size="sm"
-                                    onClick={handleSaveApiKey}
-                                    disabled={!apiKeyInputValue.trim()}
-                                    className="h-8"
-                                >
-                                    Save
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setApiKeyInputVisible(false)}
-                                    className="h-8"
-                                >
-                                    Cancel
-                                </Button>
+            {/* TabsContent with Flex layout */}
+            <TabsContent value="chat" className="mt-4 flex flex-col"> {/* Adjust height as needed */}
+                <div className="flex flex-1 gap-4 overflow-hidden"> {/* Main flex container */}
+                    {/* Left Column: Configuration */}
+                    <div className="w-[300px] flex-shrink-0 space-y-3 overflow-y-auto p-1 flex flex-col h-full">
+                        {/* Connection status */}
+                        <div>
+                            <h4 className="text-sm font-medium mb-2">Connection Status</h4>
+                            <div className="bg-card rounded-md border p-2">
+                                <div className="flex items-center">
+                                    <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus === "connected" ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <span className="text-xs text-muted-foreground">
+                                        MCP: {connectionStatusText} {connectionStatus === "connected" && tools.length > 0 ?
+                                            ` - ${tools.length} tools available` :
+                                            connectionStatus === "connected" ? " - No tools found" : ""}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    )}
-                </div>
 
-                {/* Model Selection */}
-                <div className="mb-2 flex items-center">
-                    <div className={`w-2 h-2 rounded-full mr-2 bg-green-500`}></div>
-                    <span className="text-xs text-muted-foreground mr-2">Model:</span>
-                    <Select value={selectedModel} onValueChange={handleModelChange}>
-                        <SelectTrigger className="h-7 text-xs flex-grow max-w-xs">
-                            <SelectValue placeholder="Select a model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {GEMINI_MODELS.map(model => (
-                                <SelectItem key={model.id} value={model.id} className="text-xs">
-                                    <div>
-                                        <div>{model.name}</div>
-                                        <div className="text-xs text-muted-foreground">{model.description}</div>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {/* Debug Info (only visible when there is debug content) */}
-                {debugInfo && (
-                    <div className="mb-2 p-2 bg-black/5 rounded text-xs overflow-x-auto">
-                        <details>
-                            <summary className="cursor-pointer font-medium">Debug Info</summary>
-                            <pre className="mt-1 whitespace-pre-wrap">{debugInfo}</pre>
-                        </details>
-                    </div>
-                )}
-
-                {/* Main container: Set fixed height, flex column, border */}
-                <div className="flex flex-col border rounded overflow-hidden" style={{ height: '500px' }}>
-                    {/* Message display area: grow and scroll */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                        {messages.length === 0 ? (
-                            // Initial message if chat history is empty
-                            <Alert className="bg-background">
-                                <AlertTitle>Chat Ready</AlertTitle>
-                                <AlertDescription>
-                                    Send a message using the input below to start chatting with the AI.
-                                    {connectionStatus === "connected" ?
-                                        tools.length > 0 ?
-                                            ` MCP tools available: ${tools.map(t => t.name).join(', ')}` :
-                                            " MCP connected but no tools available." :
-                                        " MCP not connected - using Gemini only."}
-                                </AlertDescription>
-                            </Alert>
-                        ) : (
-                            // Render message history
-                            messages.map((msg, index) => (
-                                <div
-                                    key={index}
-                                    className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div
-                                        className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user'
-                                            ? 'bg-primary text-primary-foreground' // User message style
-                                            : 'bg-muted text-muted-foreground' // AI message style
-                                            }`}
+                        {/* API Key Management */}
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-medium">API Key</h4>
+                                <div className="flex items-center gap-1">
+                                    {apiKey && (
+                                        <>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0"
+                                                onClick={() => setShowApiKey(!showApiKey)}
+                                            >
+                                                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 text-destructive"
+                                                onClick={handleRemoveApiKey}
+                                            >
+                                                ✕
+                                            </Button>
+                                        </>
+                                    )}
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setApiKeyInputVisible(!apiKeyInputVisible)}
+                                        className={!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ?
+                                            'animated-border' :
+                                            ''}
                                     >
-                                        {/* Use <pre> for better formatting of potential code/markdown */}
-                                        {/* Ensure content is a string before rendering, provide fallback */}
-                                        <pre className="text-sm whitespace-pre-wrap font-sans text-left"
-                                            dangerouslySetInnerHTML={{
-                                                __html: typeof msg.content === 'string'
-                                                    ? msg.content
-                                                    : JSON.stringify(msg.content, null, 2)
-                                            }}
-                                        />
-                                    </div>
+                                        {!apiKey && !import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY && (
+                                            <AlertCircle size={14} className="mr-1 animate-pulse text-primary" />
+                                        )}
+                                        {apiKey ? "Change" : "Set API Key"}
+                                    </Button>
                                 </div>
-                            ))
-                        )}
-                        {/* Loading indicator */}
-                        {isLoading && (
-                            <div className="flex justify-center items-center p-3 text-muted-foreground">
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                AI is thinking...
+                            </div>
+                            <div className="bg-card rounded-md border p-2">
+                                <div className="flex items-center">
+                                    <div className={`w-2 h-2 rounded-full mr-2 ${apiKey || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <span className="text-xs text-muted-foreground flex-grow">
+                                        {apiKey ?
+                                            (showApiKey ? apiKey : getMaskedApiKey(apiKey)) + " (custom)" :
+                                            import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY ? 'Using environment key' : 'Missing'}
+                                    </span>
+                                </div>
+
+                                {apiKeyInputVisible && (
+                                    <div className="mt-1">
+                                        <p className="text-xs mb-1 text-muted-foreground">
+                                            Your API key is stored only in your browser's local storage.
+                                        </p>
+                                        <div className="flex items-center gap-1">
+                                            <Key size={14} className="text-muted-foreground" />
+                                            <Input
+                                                type={showApiKey ? "text" : "password"}
+                                                placeholder="Enter Gemini API key"
+                                                value={apiKeyInputValue}
+                                                onChange={(e) => setApiKeyInputValue(e.target.value)}
+                                                className="flex-1 h-8 text-xs"
+                                                autoComplete="off"
+                                                autoCorrect="off"
+                                                autoCapitalize="off"
+                                                spellCheck="false"
+                                            />
+                                            <Button
+                                                size="sm"
+                                                onClick={handleSaveApiKey}
+                                                disabled={!apiKeyInputValue.trim()}
+                                                className="h-8"
+                                            >
+                                                Save
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setApiKeyInputVisible(false)}
+                                                className="h-8"
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Model Selection */}
+                        <div>
+                            <h4 className="text-sm font-medium mb-2">Model</h4>
+                            <div className="bg-card rounded-md border p-2">
+                                <div className="flex items-center">
+                                    <div className={`w-2 h-2 rounded-full mr-2 bg-green-500`}></div>
+                                    <Select value={selectedModel} onValueChange={handleModelChange}>
+                                        <SelectTrigger className="h-7 text-xs flex-grow min-w-0">
+                                            <SelectValue placeholder="Select a model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {GEMINI_MODELS.map(model => (
+                                                <SelectItem key={model.id} value={model.id} className="text-xs">
+                                                    <div>
+                                                        <div>{model.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{model.description}</div>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Available Tools Selection */}
+                        {connectionStatus === "connected" && toolsLoaded && tools.length > 0 && (
+                            <div>
+                                <h4 className="text-sm font-medium mb-2">Available Tools</h4>
+                                <ScrollArea className="h-32 w-full rounded-md border p-2 bg-card">
+                                    <div className="space-y-2">
+                                        {tools.map((tool) => (
+                                            <div key={tool.name} className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`tool-${tool.name}`}
+                                                        checked={selectedTools[tool.name] || false}
+                                                        onCheckedChange={(checked) => {
+                                                            setSelectedTools(prev => ({
+                                                                ...prev,
+                                                                [tool.name]: !!checked
+                                                            }));
+                                                        }}
+                                                    />
+                                                    <label
+                                                        htmlFor={`tool-${tool.name}`}
+                                                        className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                                    >
+                                                        {tool.name}
+                                                    </label>
+                                                </div>
+                                                <Dialog>
+                                                    <DialogTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 w-6 p-0"
+                                                            onClick={() => setPreviewTool(tool)}
+                                                        >
+                                                            <Info size={14} />
+                                                        </Button>
+                                                    </DialogTrigger>
+                                                </Dialog>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
                             </div>
                         )}
-                        {/* Empty div at the end of messages to scroll to */}
-                        <div ref={messagesEndRef} />
-                    </div>
-                    {/* Input form area: Prevent shrinking */}
-                    <form onSubmit={handleSubmit} className="flex-shrink-0 p-4 border-t flex items-center gap-2 bg-background">
-                        <Input
-                            type="text"
-                            placeholder="Send a message..."
-                            value={input}
-                            onChange={handleInputChange}
-                            className="flex-1"
-                            disabled={isLoading} // Disable input while loading
-                            aria-label="Chat input"
-                        />
-                        <Button type="submit" disabled={isLoading || !input.trim()}>
-                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
-                        </Button>
-                    </form>
-                </div>
+
+                        {/* Debug Info (only visible when there is debug content) */}
+                        {debugInfo && (
+                            <div className="flex-shrink-0">
+                                <h4 className="text-sm font-medium mb-2">Debug Info</h4>
+                                <div className="bg-card rounded-md border p-2">
+                                    <details>
+                                        <summary className="cursor-pointer text-xs font-medium">Expand</summary>
+                                        <ScrollArea className="h-32 mt-1">
+                                            <pre className="text-xs whitespace-pre-wrap">{debugInfo}</pre>
+                                        </ScrollArea>
+                                    </details>
+                                </div>
+                            </div>
+                        )}
+                    </div> {/* End Left Column */}
+
+                    {/* Tool Preview Dialog (Rendered once, outside the map) */}
+                    <Dialog open={!!previewTool} onOpenChange={(isOpen) => !isOpen && setPreviewTool(null)}>
+                        <DialogContent className="sm:max-w-[600px]">
+                            {previewTool && (
+                                <>
+                                    <DialogHeader>
+                                        <DialogTitle>{previewTool.name}</DialogTitle>
+                                        <DialogDescription>
+                                            {previewTool.description || "No description provided."}
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="py-4">
+                                        <h5 className="text-sm font-semibold mb-2">Parameters:</h5>
+                                        {Object.keys(previewTool.parameters.properties).length > 0 ? (
+                                            <ScrollArea className="h-[200px] w-full rounded-md border p-3 bg-muted/50">
+                                                <pre className="text-xs whitespace-pre-wrap">
+                                                    {JSON.stringify(previewTool.parameters, null, 2)}
+                                                </pre>
+                                            </ScrollArea>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">This tool takes no parameters.</p>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Right Column: Chat Interface */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden">
+                        {/* Chat container: Use flex-1 to fill height */}
+                        <div className="flex flex-col border rounded overflow-hidden max-h-[500px]"> {/* Set max height here */}
+                            {/* Message display area: grow and scroll */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {messages.length === 0 ? (
+                                    // Initial message if chat history is empty
+                                    <Alert className="bg-background">
+                                        <AlertTitle>Chat Ready</AlertTitle>
+                                        <AlertDescription>
+                                            Send a message using the input below to start chatting with the AI.
+                                            {connectionStatus === "connected" ?
+                                                tools.length > 0 ?
+                                                    ` Select tools above. Currently available: ${tools.map(t => t.name).join(', ')}` : // Updated message
+                                                    " MCP connected but no tools available." :
+                                                " MCP not connected - using Gemini only."}
+                                        </AlertDescription>
+                                    </Alert>
+                                ) : (
+                                    // Render message history
+                                    messages.map((msg, index) => (
+                                        <div
+                                            key={index}
+                                            className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                        >
+                                            <div
+                                                className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user'
+                                                    ? 'bg-primary text-primary-foreground' // User message style
+                                                    : 'bg-muted text-muted-foreground' // AI message style
+                                                    }`}
+                                            >
+                                                {/* Use <pre> for better formatting of potential code/markdown */}
+                                                {/* Ensure content is a string before rendering, provide fallback */}
+                                                <pre className="text-sm whitespace-pre-wrap font-sans text-left"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: typeof msg.content === 'string'
+                                                            ? msg.content
+                                                            : String(msg.content) // Ensure it's always a string
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                                {/* Loading indicator */}
+                                {isLoading && (
+                                    <div className="flex justify-center items-center p-3 text-muted-foreground">
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        AI is thinking...
+                                    </div>
+                                )}
+                                {/* Empty div at the end of messages to scroll to */}
+                                <div ref={messagesEndRef} />
+                            </div>
+                            {/* Input form area: Prevent shrinking */}
+                            <form onSubmit={handleSubmit} className="flex-shrink-0 p-4 border-t flex items-center gap-2 bg-background">
+                                <Input
+                                    type="text"
+                                    placeholder="Send a message..."
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    className="flex-1"
+                                    disabled={isLoading} // Disable input while loading
+                                    aria-label="Chat input"
+                                />
+                                <Button type="submit" disabled={isLoading || !input.trim()}>
+                                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+                                </Button>
+                            </form>
+                        </div> {/* End Chat container */}
+                    </div> {/* End Right Column */}
+                </div> {/* End Main flex container */}
             </TabsContent>
         </>
     );
