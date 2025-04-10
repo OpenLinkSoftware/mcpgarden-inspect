@@ -29,6 +29,7 @@ import {
   FolderTree,
   Hammer,
   Hash,
+  MessageCircle, // Import chat icon
   MessageSquare
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ import RootsTab from "./components/RootsTab";
 import SamplingTab, { PendingRequest } from "./components/SamplingTab";
 import Sidebar from "./components/Sidebar";
 import ToolsTab from "./components/ToolsTab";
+import ChatTab from "./components/ChatTab"; // Import the new ChatTab component
 import { DEFAULT_INSPECTOR_CONFIG } from "./lib/constants";
 import { InspectorConfig } from "./lib/configurationTypes";
 import { getMCPProxyAddress } from "./utils/configUtils";
@@ -247,9 +249,24 @@ const App = () => {
 
   useEffect(() => {
     fetch(`${getMCPProxyAddress(config)}/config`)
-      .then((response) => response.json())
+      .then(response => {
+        // Check if response is actually JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.log('Config endpoint returned non-JSON response (likely index.html). Using default config.');
+          // This is intentional - server returns index.html for config endpoint
+          // Use default values instead of treating as an error
+          return {
+            defaultEnvironment: {},
+            defaultCommand: command || 'mcp-server-everything',
+            defaultArgs: args || '',
+          };
+        }
+        return response.json();
+      })
       .then((data) => {
-        setEnv(data.defaultEnvironment);
+        console.log("Config data:", data);
+        setEnv(data.defaultEnvironment || {});
         if (data.defaultCommand) {
           setCommand(data.defaultCommand);
         }
@@ -257,9 +274,11 @@ const App = () => {
           setArgs(data.defaultArgs);
         }
       })
-      .catch((error) =>
-        console.error("Error fetching default environment:", error),
-      );
+      .catch((error) => {
+        console.error("Error fetching default environment:", error);
+        // Continue with default values instead of failing
+        console.log("Using default environment configuration");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -545,7 +564,7 @@ const App = () => {
                 className="w-full p-4"
                 onValueChange={(value) => (window.location.hash = value)}
               >
-                <TabsList className="mb-4 p-0">
+                <TabsList className="mb-4 p-2">
                   <TabsTrigger
                     value="resources"
                     disabled={!serverCapabilities?.resources}
@@ -583,6 +602,11 @@ const App = () => {
                   <TabsTrigger value="roots">
                     <FolderTree className="w-4 h-4 mr-2" />
                     Roots
+                  </TabsTrigger>
+                  {/* Add Chat Tab Trigger */}
+                  <TabsTrigger value="chat">
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Chat
                   </TabsTrigger>
                 </TabsList>
 
@@ -714,6 +738,12 @@ const App = () => {
                         roots={roots}
                         setRoots={setRoots}
                         onRootsChange={handleRootsChange}
+                      />
+                      {/* Add Chat Tab Content */}
+                      <ChatTab
+                        mcpClient={mcpClient}
+                        makeRequest={makeRequest}
+                        connectionStatus={connectionStatus}
                       />
                     </>
                   )}

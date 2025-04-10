@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: {
+
     host: true, // Allows access from network
     proxy: {
       // Proxy API requests to the backend server (running on 6277 by default) during development
@@ -29,7 +30,6 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      // Add other backend routes here if needed
     },
   },
   resolve: {

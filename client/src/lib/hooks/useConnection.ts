@@ -233,8 +233,11 @@ export function useConnection({
   const checkProxyHealth = async () => {
     try {
       const proxyHealthUrl = new URL(`${getMCPProxyAddress(config)}/health`);
+      console.info("proxyHealthUrl", proxyHealthUrl);
       const proxyHealthResponse = await fetch(proxyHealthUrl);
+      console.info("proxyHealthResponse", proxyHealthResponse);
       const proxyHealth = await proxyHealthResponse.json();
+      console.info("proxyHealth", proxyHealth);
       if (proxyHealth?.status !== "ok") {
         throw new Error("MCP Proxy Server is not healthy");
       }
