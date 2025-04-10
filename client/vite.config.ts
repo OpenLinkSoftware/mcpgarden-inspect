@@ -6,12 +6,30 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true,
+
+    host: true, // Allows access from network
     proxy: {
-      '/health': 'http://localhost:6277',
-      '/sse': 'http://localhost:6277',
-      '/message': 'http://localhost:6277',
-      '/config': 'http://localhost:6277'
+      // Proxy API requests to the backend server (running on 6277 by default) during development
+      '/sse': {
+        target: 'http://localhost:6277', // Default port of the proxy server
+        changeOrigin: true, // Recommended for virtual hosted sites
+        secure: false,      // Often needed for localhost targets
+      },
+      '/message': {
+        target: 'http://localhost:6277',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/health': {
+        target: 'http://localhost:6277',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/config': {
+        target: 'http://localhost:6277',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   resolve: {
