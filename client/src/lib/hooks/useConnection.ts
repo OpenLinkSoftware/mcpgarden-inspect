@@ -3,7 +3,10 @@ import {
   SSEClientTransport,
   SseError,
 } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StreamableHttpClientTransport as StreamableHttpTransport } from "../transports/StreamableHttpTransport"; // Corrected path
+import { 
+    StreamableHttpClientTransport as StreamableHttpTransport,
+    StreamableHttpError 
+} from "../transports/StreamableHttpTransport"; // Corrected path
 
 import {
   ClientNotification,
@@ -42,6 +45,7 @@ import {
 } from "@/utils/configUtils";
 import { getMCPServerRequestTimeout } from "@/utils/configUtils";
 import { InspectorConfig } from "../configurationTypes";
+
 
 interface UseConnectionOptions {
   transportType: "stdio" | "sse" | "streamableHttp"; // Added streamableHttp
@@ -247,9 +251,18 @@ export function useConnection({
     }
   };
 
+  const clearSessionKeys = () => {
+      Object.values(SESSION_KEYS).forEach((key) => {
+          sessionStorage.removeItem(key);
+      });
+  };
+
   const handleAuthError = async (error: unknown) => {
     // This function might need adjustment if StreamableHttpTransport handles auth differently
-    if (error instanceof SseError && error.code === 401) {
+    if ((error instanceof SseError || error instanceof StreamableHttpError) && error.code === 401) {
+      if (SESSION_KEYS.SERVER_URL != sseUrl) {
+          clearSessionKeys();
+      }
       sessionStorage.setItem(SESSION_KEYS.SERVER_URL, sseUrl);
 
       const result = await auth(authProvider, { serverUrl: sseUrl });
@@ -364,13 +377,13 @@ export function useConnection({
         error,
       );
       // Handle auth errors specifically for SSE via proxy
-      if (transportType !== 'streamableHttp') {
+      if (true || (transportType !== 'streamableHttp')) {
         const shouldRetry = await handleAuthError(error);
         if (shouldRetry) {
           return connect(undefined, retryCount + 1);
         }
 
-        if (error instanceof SseError && error.code === 401) {
+        if ((error instanceof SseError || error instanceof StreamableHttpError) && error.code === 401) {
           // Don't set error state if we're about to redirect for auth
           return;
         }

@@ -224,7 +224,7 @@ const App = () => {
     const serverUrl = params.get("serverUrl");
     if (serverUrl) {
       setSseUrl(serverUrl);
-      setTransportType("sse");
+      // setTransportType("sse");
       // Remove serverUrl from URL without reloading the page
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("serverUrl");
