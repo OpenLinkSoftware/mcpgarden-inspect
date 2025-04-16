@@ -45,7 +45,7 @@ import {
 } from "@/utils/configUtils";
 import { getMCPServerRequestTimeout } from "@/utils/configUtils";
 import { InspectorConfig } from "../configurationTypes";
-import { clearSessionKeys } from "../constants";
+
 
 interface UseConnectionOptions {
   transportType: "stdio" | "sse" | "streamableHttp"; // Added streamableHttp
@@ -251,6 +251,11 @@ export function useConnection({
     }
   };
 
+  const clearSessionKeys = () => {
+      Object.values(SESSION_KEYS).forEach((key) => {
+          sessionStorage.removeItem(key);
+      });
+  };
 
   const handleAuthError = async (error: unknown) => {
     // This function might need adjustment if StreamableHttpTransport handles auth differently
