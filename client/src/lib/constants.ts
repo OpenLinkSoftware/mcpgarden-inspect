@@ -8,6 +8,12 @@ export const SESSION_KEYS = {
   CLIENT_INFORMATION: "mcp_client_information",
 } as const;
 
+export const clearSessionKeys = () => {
+  Object.values(SESSION_KEYS).forEach((key) => {
+    sessionStorage.removeItem(key);
+  });
+};
+
 export type ConnectionStatus =
   | "disconnected"
   | "connected"
