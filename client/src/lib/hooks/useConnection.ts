@@ -251,17 +251,11 @@ export function useConnection({
     }
   };
 
-  const clearSessionKeys = () => {
-      Object.values(SESSION_KEYS).forEach((key) => {
-          sessionStorage.removeItem(key);
-      });
-  };
-
   const handleAuthError = async (error: unknown) => {
     // This function might need adjustment if StreamableHttpTransport handles auth differently
     if ((error instanceof SseError || error instanceof StreamableHttpError) && error.code === 401) {
       if (SESSION_KEYS.SERVER_URL != sseUrl) {
-          clearSessionKeys();
+          authProvider.clear();
       }
       sessionStorage.setItem(SESSION_KEYS.SERVER_URL, sseUrl);
 
