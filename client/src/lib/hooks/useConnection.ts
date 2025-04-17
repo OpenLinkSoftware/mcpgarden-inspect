@@ -4,10 +4,9 @@ import {
   SseError,
 } from "@modelcontextprotocol/sdk/client/sse.js";
 import { 
-    StreamableHttpClientTransport as StreamableHttpTransport,
-    StreamableHttpError 
+  StreamableHttpClientTransport as StreamableHttpTransport,
+  StreamableHttpError 
 } from "../transports/StreamableHttpTransport"; // Corrected path
-
 import {
   ClientNotification,
   ClientRequest,
@@ -252,9 +251,9 @@ export function useConnection({
   };
 
   const clearSessionKeys = () => {
-      Object.values(SESSION_KEYS).forEach((key) => {
-          sessionStorage.removeItem(key);
-      });
+    Object.values(SESSION_KEYS).forEach((key) => {
+        sessionStorage.removeItem(key);
+    });
   };
 
   const handleAuthError = async (error: unknown) => {
